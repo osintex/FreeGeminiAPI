@@ -1,0 +1,8 @@
+{
+  "cookies": "__Secure-1PSID=YOUR_1PSID; __Secure-1PSIDTS=YOUR_1PSIDTS; __Secure-1PSIDCC=YOUR_1PSIDCC",
+  "secure_1psid": "YOUR_1PSID",
+  "secure_1psidts": "YOUR_1PSIDTS",
+  "secure_1psidcc": "YOUR_1PSIDCC",
+  "snlm0e": "",
+  "bl": "boq_gemini-web-uiserver_20261113.11_p0"
+}

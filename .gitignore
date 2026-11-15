@@ -1,0 +1,5 @@
+node_modules/
+.chrome-profile-gemini/
+gemini-auth.json
+.env
+*.log

@@ -1,0 +1,25 @@
+{
+  "name": "free-gemini-api",
+  "version": "1.0.0",
+  "description": "Local OpenAI-compatible API proxy for Google Gemini Web Chat (gemini.google.com)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "auth": "node scripts/gemini_chrome_auth.js",
+    "doctor": "node scripts/doctor.js"
+  },
+  "keywords": [
+    "gemini",
+    "google-gemini",
+    "gemini-web",
+    "openai-compatible",
+    "reverse-proxy",
+    "argon",
+    "gemini-advanced"
+  ],
+  "author": "He & c4",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
