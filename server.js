@@ -208,6 +208,33 @@ function extractCandidateData(frame) {
     return { text, thoughts, cid, rid, rcid, isCompleted };
 }
 
+function normalizeResponsesInput(input) {
+    if (typeof input === 'string') return [{ role: 'user', content: input }];
+    if (!Array.isArray(input)) return [];
+    const messages = [];
+    for (const item of input) {
+        if (!item || typeof item !== 'object') continue;
+        if (item.type === 'message' || item.role) {
+            let contentStr = '';
+            if (typeof item.content === 'string') {
+                contentStr = item.content;
+            } else if (Array.isArray(item.content)) {
+                for (const part of item.content) {
+                    if (part?.type === 'input_text' || part?.type === 'text') {
+                        contentStr += (part.text || '') + '\n';
+                    } else if (typeof part === 'string') {
+                        contentStr += part + '\n';
+                    }
+                }
+            }
+            messages.push({ role: item.role || 'user', content: contentStr.trim() });
+        } else if (item.type === 'input_text') {
+            messages.push({ role: 'user', content: item.text || '' });
+        }
+    }
+    return messages;
+}
+
 function formatMessagesToPrompt(messages) {
     if (!Array.isArray(messages) || messages.length === 0) return '';
     if (messages.length === 1) return messages[0].content || '';
@@ -284,8 +311,9 @@ const server = http.createServer(async (req, res) => {
         });
     }
 
-    // POST /v1/chat/completions or /v1/messages
-    if ((pathname === '/v1/chat/completions' || pathname === '/v1/messages') && req.method === 'POST') {
+    // POST /v1/chat/completions, /v1/messages, /v1/responses
+    if ((pathname === '/v1/chat/completions' || pathname === '/v1/messages' || pathname === '/v1/responses') && req.method === 'POST') {
+        const isResponsesApi = (pathname === '/v1/responses');
         let bodyRaw = '';
         req.on('data', chunk => { bodyRaw += chunk; });
         req.on('end', async () => {
@@ -298,12 +326,23 @@ const server = http.createServer(async (req, res) => {
 
             const isStream = Boolean(body.stream);
             const modelConfig = resolveModelConfig(body.model);
-            const prompt = formatMessagesToPrompt(body.messages);
+            
+            let messages = [];
+            if (isResponsesApi) {
+                messages = normalizeResponsesInput(body.input);
+                if (body.instructions) {
+                    messages.unshift({ role: 'system', content: body.instructions });
+                }
+            } else {
+                messages = body.messages || [];
+            }
+
+            const prompt = formatMessagesToPrompt(messages);
             const userKey = body.user || 'default';
             const session = sessionCache.get(userKey) || null;
 
             if (!prompt) {
-                return sendJson(res, 400, { error: { message: 'Messages array is required and cannot be empty' } });
+                return sendJson(res, 400, { error: { message: 'Prompt or messages array is required and cannot be empty' } });
             }
 
             if (!authConfig.cookies) loadAuth();
@@ -353,6 +392,8 @@ const server = http.createServer(async (req, res) => {
                 }
 
                 const completionId = `chatcmpl-${crypto.randomUUID()}`;
+                const respId = `resp_${crypto.randomUUID()}`;
+                const msgId = `msg_${crypto.randomUUID()}`;
                 const createdTime = Math.floor(Date.now() / 1000);
 
                 if (isStream) {
@@ -362,6 +403,42 @@ const server = http.createServer(async (req, res) => {
                         'Connection': 'keep-alive',
                         'Access-Control-Allow-Origin': '*'
                     });
+
+                    if (isResponsesApi) {
+                        res.write(`event: response.created\ndata: ${JSON.stringify({
+                            type: 'response.created',
+                            response: {
+                                id: respId,
+                                object: 'response',
+                                status: 'in_progress',
+                                model: modelConfig.id,
+                                output: []
+                            }
+                        })}\n\n`);
+
+                        res.write(`event: response.output_item.added\ndata: ${JSON.stringify({
+                            type: 'response.output_item.added',
+                            output_index: 0,
+                            item: {
+                                id: msgId,
+                                type: 'message',
+                                role: 'assistant',
+                                status: 'in_progress',
+                                content: []
+                            }
+                        })}\n\n`);
+
+                        res.write(`event: response.content_part.added\ndata: ${JSON.stringify({
+                            type: 'response.content_part.added',
+                            output_index: 0,
+                            content_index: 0,
+                            part: {
+                                type: 'output_text',
+                                text: '',
+                                annotations: []
+                            }
+                        })}\n\n`);
+                    }
                 }
 
                 const reader = upstreamResp.body.getReader();
@@ -381,14 +458,10 @@ const server = http.createServer(async (req, res) => {
                     const chunkStr = decoder.decode(value, { stream: true });
                     bufferState.buffer += chunkStr;
                     const frames = parseStreamChunks(bufferState);
-                    if (frames.length > 0) {
-                        console.log(`[DEBUG] Received ${frames.length} frame(s) in chunk`);
-                    }
 
                     for (const frame of frames) {
                         const parsed = extractCandidateData(frame);
                         if (!parsed) continue;
-                        console.log(`[DEBUG] Frame parsed: text="${parsed.text ? parsed.text.slice(0, 30) : ''}", cid=${parsed.cid}`);
 
                         if (parsed.cid) finalCid = parsed.cid;
                         if (parsed.rid) finalRid = parsed.rid;
@@ -398,20 +471,28 @@ const server = http.createServer(async (req, res) => {
                         if (parsed.text && parsed.text.length > lastFullText.length) {
                             const delta = parsed.text.slice(lastFullText.length);
                             lastFullText = parsed.text;
-                            console.log(`[DEBUG] Updated lastFullText: "${lastFullText.slice(0, 40)}"`);
 
                             if (isStream) {
-                                res.write(`data: ${JSON.stringify({
-                                    id: completionId,
-                                    object: 'chat.completion.chunk',
-                                    created: createdTime,
-                                    model: modelConfig.id,
-                                    choices: [{
-                                        index: 0,
-                                        delta: { content: delta },
-                                        finish_reason: null
-                                    }]
-                                })}\n\n`);
+                                if (isResponsesApi) {
+                                    res.write(`event: response.output_text.delta\ndata: ${JSON.stringify({
+                                        type: 'response.output_text.delta',
+                                        output_index: 0,
+                                        content_index: 0,
+                                        delta: delta
+                                    })}\n\n`);
+                                } else {
+                                    res.write(`data: ${JSON.stringify({
+                                        id: completionId,
+                                        object: 'chat.completion.chunk',
+                                        created: createdTime,
+                                        model: modelConfig.id,
+                                        choices: [{
+                                            index: 0,
+                                            delta: { content: delta },
+                                            finish_reason: null
+                                        }]
+                                    })}\n\n`);
+                                }
                             }
                         }
 
@@ -420,7 +501,7 @@ const server = http.createServer(async (req, res) => {
                             const thoughtDelta = parsed.thoughts.slice(lastFullThoughts.length);
                             lastFullThoughts = parsed.thoughts;
 
-                            if (isStream) {
+                            if (isStream && !isResponsesApi) {
                                 res.write(`data: ${JSON.stringify({
                                     id: completionId,
                                     object: 'chat.completion.chunk',
@@ -465,40 +546,122 @@ const server = http.createServer(async (req, res) => {
                 }
 
                 if (isStream) {
-                    res.write(`data: ${JSON.stringify({
-                        id: completionId,
-                        object: 'chat.completion.chunk',
-                        created: createdTime,
-                        model: modelConfig.id,
-                        choices: [{
-                            index: 0,
-                            delta: {},
-                            finish_reason: 'stop'
-                        }]
-                    })}\n\n`);
+                    if (isResponsesApi) {
+                        res.write(`event: response.output_text.done\ndata: ${JSON.stringify({
+                            type: 'response.output_text.done',
+                            output_index: 0,
+                            content_index: 0,
+                            text: lastFullText
+                        })}\n\n`);
+
+                        res.write(`event: response.content_part.done\ndata: ${JSON.stringify({
+                            type: 'response.content_part.done',
+                            output_index: 0,
+                            content_index: 0,
+                            part: {
+                                type: 'output_text',
+                                text: lastFullText,
+                                annotations: []
+                            }
+                        })}\n\n`);
+
+                        res.write(`event: response.output_item.done\ndata: ${JSON.stringify({
+                            type: 'response.output_item.done',
+                            output_index: 0,
+                            item: {
+                                id: msgId,
+                                type: 'message',
+                                role: 'assistant',
+                                status: 'completed',
+                                content: [{ type: 'output_text', text: lastFullText, annotations: [] }]
+                            }
+                        })}\n\n`);
+
+                        res.write(`event: response.completed\ndata: ${JSON.stringify({
+                            type: 'response.completed',
+                            response: {
+                                id: respId,
+                                object: 'response',
+                                status: 'completed',
+                                model: modelConfig.id,
+                                output: [
+                                    {
+                                        id: msgId,
+                                        type: 'message',
+                                        role: 'assistant',
+                                        status: 'completed',
+                                        content: [{ type: 'output_text', text: lastFullText, annotations: [] }]
+                                    }
+                                ],
+                                output_text: lastFullText,
+                                usage: {
+                                    input_tokens: Math.ceil(prompt.length / 4),
+                                    output_tokens: Math.ceil(lastFullText.length / 4),
+                                    total_tokens: Math.ceil((prompt.length + lastFullText.length) / 4)
+                                }
+                            }
+                        })}\n\n`);
+                    } else {
+                        res.write(`data: ${JSON.stringify({
+                            id: completionId,
+                            object: 'chat.completion.chunk',
+                            created: createdTime,
+                            model: modelConfig.id,
+                            choices: [{
+                                index: 0,
+                                delta: {},
+                                finish_reason: 'stop'
+                            }]
+                        })}\n\n`);
+                    }
                     res.write('data: [DONE]\n\n');
                     res.end();
                 } else {
-                    return sendJson(res, 200, {
-                        id: completionId,
-                        object: 'chat.completion',
-                        created: createdTime,
-                        model: modelConfig.id,
-                        choices: [{
-                            index: 0,
-                            message: {
-                                role: 'assistant',
-                                content: lastFullText,
-                                ...(lastFullThoughts ? { reasoning_content: lastFullThoughts } : {})
-                            },
-                            finish_reason: 'stop'
-                        }],
-                        usage: {
-                            prompt_tokens: Math.ceil(prompt.length / 4),
-                            completion_tokens: Math.ceil(lastFullText.length / 4),
-                            total_tokens: Math.ceil((prompt.length + lastFullText.length) / 4)
-                        }
-                    });
+                    if (isResponsesApi) {
+                        return sendJson(res, 200, {
+                            id: respId,
+                            object: 'response',
+                            created_at: createdTime,
+                            status: 'completed',
+                            model: modelConfig.id,
+                            output: [
+                                {
+                                    id: msgId,
+                                    type: 'message',
+                                    role: 'assistant',
+                                    status: 'completed',
+                                    content: [{ type: 'output_text', text: lastFullText, annotations: [] }]
+                                }
+                            ],
+                            output_text: lastFullText,
+                            usage: {
+                                input_tokens: Math.ceil(prompt.length / 4),
+                                output_tokens: Math.ceil(lastFullText.length / 4),
+                                total_tokens: Math.ceil((prompt.length + lastFullText.length) / 4)
+                            }
+                        });
+                    } else {
+                        return sendJson(res, 200, {
+                            id: completionId,
+                            object: 'chat.completion',
+                            created: createdTime,
+                            model: modelConfig.id,
+                            choices: [{
+                                index: 0,
+                                message: {
+                                    role: 'assistant',
+                                    content: lastFullText,
+                                    ...(lastFullThoughts ? { reasoning_content: lastFullThoughts } : {})
+                                },
+                                finish_reason: 'stop'
+                            }],
+                            usage: {
+                                prompt_tokens: Math.ceil(prompt.length / 4),
+                                completion_tokens: Math.ceil(lastFullText.length / 4),
+                                total_tokens: Math.ceil((prompt.length + lastFullText.length) / 4)
+                            }
+                        });
+                    }
                 }
             } catch (err) {
                 console.error('[-] Error processing completion:', err);
