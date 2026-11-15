@@ -138,31 +138,22 @@ function buildInnerRequest(prompt, lang = 'ru', session = null, thinking = false
 }
 
 /**
- * Parses length-prefixed chunks from Google's batchexecute / StreamGenerate stream
+ * Parses length-prefixed chunks / envelopes from Google's batchexecute stream
  */
 function parseStreamChunks(bufferState) {
     const frames = [];
     while (true) {
-        if (bufferState.expectedUnits === null) {
-            bufferState.buffer = bufferState.buffer.replace(/^\)\]\}'\s*/, '');
-            const nl = bufferState.buffer.indexOf('\n');
-            if (nl === -1) break;
-            const line = bufferState.buffer.slice(0, nl).trim();
-            const num = parseInt(line, 10);
-            if (isNaN(num)) break;
-            bufferState.expectedUnits = num;
-            bufferState.buffer = bufferState.buffer.slice(nl + 1);
+        const nl = bufferState.buffer.indexOf('\n');
+        if (nl === -1) break;
+        const line = bufferState.buffer.slice(0, nl).trim();
+        bufferState.buffer = bufferState.buffer.slice(nl + 1);
+
+        if (line.startsWith('[["wrb.fr"')) {
+            try {
+                const parsed = JSON.parse(line);
+                frames.push(parsed);
+            } catch {}
         }
-
-        if (bufferState.buffer.length < bufferState.expectedUnits) break;
-        const payload = bufferState.buffer.slice(0, bufferState.expectedUnits);
-        bufferState.buffer = bufferState.buffer.slice(bufferState.expectedUnits);
-        bufferState.expectedUnits = null;
-
-        try {
-            const parsed = JSON.parse(payload);
-            frames.push(parsed);
-        } catch {}
     }
     return frames;
 }
@@ -315,6 +306,7 @@ const server = http.createServer(async (req, res) => {
                 return sendJson(res, 400, { error: { message: 'Messages array is required and cannot be empty' } });
             }
 
+            if (!authConfig.cookies) loadAuth();
             await refreshTokensIfNeeded();
             if (!authConfig.cookies || !authConfig.snlm0e) {
                 return sendJson(res, 500, {
@@ -328,7 +320,7 @@ const server = http.createServer(async (req, res) => {
             const reqId = Math.floor(Math.random() * 90000) + 10000;
             const targetEndpoint = `https://gemini.google.com/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate?bl=${encodeURIComponent(authConfig.bl)}&_reqid=${reqId}&rt=c`;
 
-            const innerReq = buildInnerRequest(prompt, 'ru', session, modelConfig.thinking, modelConfig.modelNumber);
+            const innerReq = buildInnerRequest(prompt, 'ru', session, modelConfig.thinking, 1);
             const postData = new URLSearchParams();
             postData.append('f.req', JSON.stringify([null, JSON.stringify(innerReq)]));
             postData.append('at', authConfig.snlm0e);
@@ -341,13 +333,6 @@ const server = http.createServer(async (req, res) => {
                 'X-Same-Domain': '1',
                 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
             };
-
-            if (modelConfig.advanced) {
-                // Header unlocking Advanced/Pro tier on Google backend for subscribed accounts
-                requestHeaders['x-goog-ext-525005358-jspb'] = '[1,null,null,null,"e6fa609c3fa255c0",null,null,0,[4,5,6,8],null,null,2,null,null,3]';
-                requestHeaders['x-goog-ext-73010989-jspb'] = '[0]';
-                requestHeaders['x-goog-ext-73010990-jspb'] = '[0,0,0]';
-            }
 
             try {
                 const upstreamResp = await fetch(targetEndpoint, {
@@ -396,10 +381,14 @@ const server = http.createServer(async (req, res) => {
                     const chunkStr = decoder.decode(value, { stream: true });
                     bufferState.buffer += chunkStr;
                     const frames = parseStreamChunks(bufferState);
+                    if (frames.length > 0) {
+                        console.log(`[DEBUG] Received ${frames.length} frame(s) in chunk`);
+                    }
 
                     for (const frame of frames) {
                         const parsed = extractCandidateData(frame);
                         if (!parsed) continue;
+                        console.log(`[DEBUG] Frame parsed: text="${parsed.text ? parsed.text.slice(0, 30) : ''}", cid=${parsed.cid}`);
 
                         if (parsed.cid) finalCid = parsed.cid;
                         if (parsed.rid) finalRid = parsed.rid;
@@ -409,6 +398,7 @@ const server = http.createServer(async (req, res) => {
                         if (parsed.text && parsed.text.length > lastFullText.length) {
                             const delta = parsed.text.slice(lastFullText.length);
                             lastFullText = parsed.text;
+                            console.log(`[DEBUG] Updated lastFullText: "${lastFullText.slice(0, 40)}"`);
 
                             if (isStream) {
                                 res.write(`data: ${JSON.stringify({
@@ -444,6 +434,23 @@ const server = http.createServer(async (req, res) => {
                                 })}\n\n`);
                             }
                         }
+                    }
+                }
+
+                // Flush any trailing frame
+                bufferState.buffer += '\n';
+                const trailingFrames = parseStreamChunks(bufferState);
+                for (const frame of trailingFrames) {
+                    const parsed = extractCandidateData(frame);
+                    if (!parsed) continue;
+                    if (parsed.cid) finalCid = parsed.cid;
+                    if (parsed.rid) finalRid = parsed.rid;
+                    if (parsed.rcid) finalRcid = parsed.rcid;
+                    if (parsed.text && parsed.text.length > lastFullText.length) {
+                        lastFullText = parsed.text;
+                    }
+                    if (parsed.thoughts && parsed.thoughts.length > lastFullThoughts.length) {
+                        lastFullThoughts = parsed.thoughts;
                     }
                 }
 
