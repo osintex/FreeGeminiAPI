@@ -1,21 +1,19 @@
 #!/usr/bin/env bash
-# FreeGeminiAPI launcher & service controller
+# FreeGeminiAPI launcher & service controller for Linux / Unix
 
-# Locate canonical repository path
+# Resolve canonical repository path through symlinks
+REAL_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+APP_DIR="$(cd "$(dirname "$REAL_PATH")/.." 2>/dev/null && pwd)"
+
 if [ -n "$FREEGEMINI_DIR" ] && [ -f "$FREEGEMINI_DIR/server.js" ]; then
     APP_DIR="$FREEGEMINI_DIR"
-elif [ -f "$HOME/.gemini/antigravity/scratch/FreeGeminiAPI/server.js" ]; then
-    APP_DIR="$HOME/.gemini/antigravity/scratch/FreeGeminiAPI"
-else
-    # Fallback to script location if invoked directly from inside the repo
-    APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)"
 fi
 
 SERVER_JS="$APP_DIR/server.js"
 LOG_FILE="$APP_DIR/server.log"
 
 if [ ! -f "$SERVER_JS" ]; then
-    echo "[-] Error: server.js not found at $SERVER_JS"
+    echo "[-] Ошибка: server.js не найден по пути $SERVER_JS"
     exit 1
 fi
 
@@ -40,6 +38,11 @@ case "$1" in
             echo "[-] Процесс FreeGeminiAPI не найден."
         fi
         ;;
+    restart)
+        $0 stop
+        sleep 1
+        $0 bg
+        ;;
     status)
         PIDS=$(pgrep -f "$SERVER_JS" | tr '\n' ' ')
         if [ -n "$PIDS" ]; then
@@ -57,11 +60,39 @@ case "$1" in
             echo "[-] Файл логов пока не создан ($LOG_FILE)."
         fi
         ;;
+    systemd)
+        UNIT_DIR="$HOME/.config/systemd/user"
+        UNIT_FILE="$UNIT_DIR/freegemini.service"
+        NODE_BIN="$(which node)"
+        mkdir -p "$UNIT_DIR"
+        cat <<EOF > "$UNIT_FILE"
+[Unit]
+Description=FreeGeminiAPI Proxy Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$APP_DIR
+ExecStart=$NODE_BIN server.js
+Restart=always
+RestartSec=3
+Environment=PORT=9656
+Environment=HOST=127.0.0.1
+
+[Install]
+WantedBy=default.target
+EOF
+        systemctl --user daemon-reload
+        echo "[+] Юнит systemd создан: $UNIT_FILE"
+        echo "[+] Для автозапуска выполни:"
+        echo "    systemctl --user enable --now freegemini"
+        ;;
     install)
         TARGET="$HOME/.local/bin/freegemini"
         mkdir -p "$HOME/.local/bin"
         ln -sf "$APP_DIR/scripts/freegemini.sh" "$TARGET"
-        echo "[+] Симлинк установлен: $TARGET -> $APP_DIR/scripts/freegemini.sh"
+        echo "[+] CLI лаунчер установлен: $TARGET"
+        echo "[+] Проверь, что ~/.local/bin есть в \$PATH"
         ;;
     *)
         exec node "$SERVER_JS"

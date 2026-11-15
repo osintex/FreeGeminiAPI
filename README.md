@@ -53,43 +53,82 @@
 
 ---
 
-## 🚀 Быстрый старт
+## 🚀 Установка и быстрый старт на Linux
 
-### 1. Клонирование
+Проекту **не требуются** сторонние npm-пакеты (Zero Dependencies). Достаточно стандартного рантайма Node.js 18+ и любого браузера для первичной авторизации.
+
+### 1. Системные зависимости
+
+Установите Node.js и браузер через пакетный менеджер вашего дистрибутива:
+
+```bash
+# Arch Linux / Omarchy / Manjaro
+sudo pacman -S nodejs git firefox
+
+# Debian / Ubuntu / Mint
+sudo apt update && sudo apt install -y nodejs git firefox
+
+# Fedora / RHEL
+sudo dnf install -y nodejs git firefox
+```
+
+### 2. Клонирование и установка лаунчера
+
 ```bash
 git clone https://github.com/osintex/FreeGeminiAPI.git
 cd FreeGeminiAPI
+
+# Создает команду freegemini в ~/.local/bin
+./scripts/freegemini.sh install
+```
+*(Убедитесь, что каталог `~/.local/bin` добавлен в вашу переменную `$PATH`)*
+
+---
+
+### 3. Первый запуск и авторизация
+
+Запустите сервер:
+```bash
+freegemini
+# или напрямую через Node:
+node server.js
 ```
 
-### 2. Первый запуск и авторизация
-При первом запуске скрипт автоматически обнаружит браузер (**Firefox** или **Chromium / Chrome**) и откроет страницу авторизации:
-```bash
-npm start
-```
+При первом запуске скрипт автоматически обнаружит установленный браузер (**Firefox** или **Chromium / Chrome**) и откроет окно Google:
 1. Войдите в свой Google-аккаунт в открывшемся окне.
-2. Сервер автоматически перехватит куки и токен `SNlM0e`, закроет окно и сразу запустит API на `http://127.0.0.1:9656/v1`.
+2. Прокси автоматически перехватит куки и токен `SNlM0e`, закроет окно и запустит API на `http://127.0.0.1:9656/v1`.
 
 *Для принудительного выбора браузера:*
 ```bash
-BROWSER=firefox npm run auth     # использовать Firefox
-BROWSER=chromium npm run auth    # использовать Chromium/Chrome
+BROWSER=firefox node scripts/gemini_auth.js     # использовать Firefox
+BROWSER=chromium node scripts/gemini_auth.js    # использовать Chromium/Chrome
 ```
 
 ---
 
-## 🕹️ Удобный CLI-лаунчер `freegemini`
+## 🕹️ Управление демоном на Linux (`freegemini`)
 
-Установите глобальный шорткат в систему:
-```bash
-./scripts/freegemini.sh install
-```
+Скрипт-лаунчер `freegemini` позволяет управлять фоновым процессом как стандартным системным демоном:
 
-Команды из любого терминала:
-- `freegemini` — запуск на переднем плане с живыми логами запросов
-- `freegemini bg` — запуск в фоне (процесс отвязывается от терминала)
-- `freegemini status` — проверка состояния сервера и списка моделей
+- `freegemini` — запуск на переднем плане с выводом логов запросов в stdout
+- `freegemini bg` — запуск демона в фоне (отвязывается от терминала через `nohup`)
+- `freegemini status` — проверка статуса, PID процесса и доступности моделей
 - `freegemini logs` — чтение фоновых логов в реальном времени (`tail -f`)
-- `freegemini stop` — аккуратная остановка фонового сервера
+- `freegemini restart` — перезапуск демона
+- `freegemini stop` — остановка фонового процесса
+
+### Автозапуск через systemd (Linux User Unit)
+
+Для запуска прокси в качестве постоянной фоновой службы:
+```bash
+freegemini systemd
+systemctl --user enable --now freegemini
+```
+Управление через systemctl:
+```bash
+systemctl --user status freegemini
+journalctl --user -u freegemini -f
+```
 
 ---
 
@@ -101,9 +140,9 @@ Codex CLI работает через нативный протокол Response
 
 #### Настройка в 1 команду:
 ```bash
-npm run setup:codex
+node scripts/setup_codex.js
 ```
-Команда сгенерирует `~/.codex/models.json` с контекстом 1M токенов и обновит `~/.codex/config.toml`.
+Скрипт автоматически создаст `~/.codex/models.json` с полным манифестом моделей (окно контекста 1,000,000 токенов, уровни рассуждений) и сконфигурирует `~/.codex/config.toml`.
 
 #### Ручной конфиг (`~/.codex/config.toml`):
 ```toml
@@ -204,36 +243,8 @@ print(response.choices[0].message.content)
 
 ---
 
-## ⚙️ Системная служба systemd (Linux)
+## 🔒 Изоляция и сетевая модель
 
-Создайте `~/.config/systemd/user/free-gemini-api.service`:
-
-```ini
-[Unit]
-Description=FreeGeminiAPI Proxy Server
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=%h/.gemini/antigravity/scratch/FreeGeminiAPI
-ExecStart=/usr/bin/node server.js
-Restart=always
-RestartSec=5
-Environment=PORT=9656
-Environment=HOST=127.0.0.1
-
-[Install]
-WantedBy=default.target
-```
-
-Активация:
-```bash
-systemctl --user daemon-reload
-systemctl --user enable --now free-gemini-api
-```
-
----
-
-## 🔒 Безопасность
-
-Файл `gemini-auth.json`, профили браузеров и логи добавлены в `.gitignore`. При публикации в GitHub ваши персональные токены никогда не попадут в репозиторий. Прокси слушает исключительно локальный адрес `127.0.0.1`.
+- **Локальный loopback**: сервер слушает исключительно `127.0.0.1:9656` и недоступен извне.
+- **Хранение сессии**: файл `gemini-auth.json` создается локально, изолирован правами доступа и внесен в `.gitignore`.
+- **Без стороннего кода**: никаких внешних npm-пакетов, аналитики или сторонних сервисов. Прямой защищенный канал между локальным клиентом и серверами Google.
