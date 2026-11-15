@@ -1,116 +1,126 @@
 # FreeGeminiAPI ♊
 
 <p align="center">
-  <strong>Локальный OpenAI & Responses API прокси для Google Gemini Web Chat (gemini.google.com)</strong><br>
-  <em>Бесплатный доступ к веб-моделям Gemini (включая 2.0 Flash, 2.0 Pro Exp, Gemini Advanced / Argon, Thinking Mode) через стандартные API.</em>
+  <strong>Локальный шлюз к веб-версии Google Gemini с поддержкой OpenAI, Codex Responses и Anthropic Messages API</strong><br>
+  <em>Полноценный доступ к веб-моделям Gemini (включая Gemini Advanced / Argon, Gemini Hydrogen, 2.0 Flash Thinking, 2.0 Pro Experimental) через стандартные протоколы с сохранением всех возможностей вашей подписки.</em>
 </p>
 
 <p align="center">
   <img alt="Node.js 18 plus" src="https://img.shields.io/badge/node-18%2B-339933.svg" />
   <img alt="Zero Dependencies" src="https://img.shields.io/badge/dependencies-0-blue.svg" />
   <img alt="OpenAI Chat API" src="https://img.shields.io/badge/OpenAI_Chat-compatible-111111.svg" />
-  <img alt="OpenAI Responses API" src="https://img.shields.io/badge/OpenAI_Responses-compatible-412991.svg" />
-  <img alt="Anthropic API" src="https://img.shields.io/badge/Anthropic_Messages-compatible-d97706.svg" />
+  <img alt="OpenAI Responses API" src="https://img.shields.io/badge/Codex_Responses-compatible-412991.svg" />
+  <img alt="Anthropic Messages API" src="https://img.shields.io/badge/Anthropic_Messages-compatible-d97706.svg" />
+  <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-green.svg" />
 </p>
 
 ---
 
-## 📌 Что это такое
+## 📌 О проекте
 
-**FreeGeminiAPI** — это легковесный локальный прокси-сервер, который подключается к веб-интерфейсу Google Gemini через вашу браузерную сессию и транслирует его в стандартные протоколы:
-1. **OpenAI Chat Completions API** (`/v1/chat/completions`) — поддержка обычных запросов и стриминга (SSE).
-2. **OpenAI Responses API** (`/v1/responses`) — прямая совместимость с **Codex CLI (`codex`)**, Cursor и новыми инструментами OpenAI.
-3. **Anthropic Messages API** (`/v1/messages`) — прямая совместимость с **Claude Code**, **Cline** и др.
+**FreeGeminiAPI** превращает веб-интерфейс [gemini.google.com](https://gemini.google.com) в универсальный локальный API-сервер.
 
-### Зачем это нужно?
-- **Веб-модели Google**: доступ к **Gemini 2.0 Flash**, **Gemini 2.0 Pro Experimental**, **Gemini Advanced (Argon)** и режиму рассуждений (**Thinking**), которые часто недоступны в стандартных API или урезаны по квотам.
-- **Подписка Gemini Advanced**: если у вас есть подписка Google One AI Premium, прокси автоматически наследует статус подписчика — снимаются жесткие лимиты, включается длинный контекст и Pro-пайплайн.
-- **Чистый Node.js**: **0 внешних npm-зависимостей** (zero dependencies). Никаких `pip`, `venv`, C-компиляторов или тяжелых фреймворков.
+Если у вас есть подписка **Google One AI Premium (Gemini Advanced)** или стандартный Google-аккаунт, прокси позволяет использовать веб-модели напрямую в любимых инструментах разработчика — **Codex CLI**, **Claude Code**, **Cline / Roo Code**, **Cursor**, **Aider**, **Open WebUI** — без биллинга Google Cloud / AI Studio и без урезанных квот.
+
+### Ключевые возможности:
+- 🚀 **Zero Dependencies**: чистый Node.js 18+ без единого стороннего npm-пакета. Никаких `pip`, компиляторов и раздутых зависимостей.
+- ⚡ **OpenAI Responses API**: нативная поддержка протокола OpenAI Responses (`/v1/responses`) для терминального агента **OpenAI Codex CLI (`codex`)**.
+-  Claude **Anthropic Messages API**: полная эмуляция протокола Claude (`/v1/messages`), включая стриминг блоков рассуждений (`thinking_delta`) для **Claude Code** и **Cline**.
+- 💬 **OpenAI Chat Completions**: стандартный эндпоинт (`/v1/chat/completions`) со стримингом токенов (SSE) для Cursor, Open WebUI и любых скриптов на `openai` SDK.
+- 🎯 **Каталог моделей `/model` для Codex**: автоматическая генерация манифеста моделей для интерактивного меню с окном контекста 1,000,000 токенов и уровнями reasoning.
+- 🔑 **Авторизация в один клик**: встроенный скрипт перехвата сессии через Chrome DevTools Protocol (CDP).
+- 🛠️ **CLI-лаунчер `freegemini`**: управление сервером в терминале (`freegemini bg`, `status`, `logs`, `stop`).
 
 ---
 
-## 🚀 Установка и быстрый старт
+## 🧠 Поддерживаемые модели
 
-### Требования
-- **Node.js** версии `>= 18.0.0` (нативная поддержка `fetch`, `WebSocket`, `crypto`).
-- Любой браузер на базе Chromium (Google Chrome, Chromium, Brave).
+| Модель | Назначение | Режим | Окно контекста |
+|---|---|---|---|
+| `gemini-advanced` | **Gemini Advanced (Argon)** — флагманский кодинг, глубокий рефакторинг | Thinking + Pro | 1,048,576 |
+| `gemini-hydrogen` *(алиас `hydrogen`)* | **Gemini Hydrogen** — ультра-низкая задержка (TTFT), максимальная скорость | Fast | 1,048,576 |
+| `gemini-2.0-flash-thinking` | **Gemini 2.0 Flash Thinking** — быстрые пошаговые рассуждения | Reasoning | 1,048,576 |
+| `gemini-2.0-pro-exp` | **Gemini 2.0 Pro Experimental** — сложные алгоритмы, олимпиадная математика | Deep Reasoning | 1,048,576 |
+| `gemini-2.0-flash` | **Gemini 2.0 Flash** — стандартная модель нового поколения (по умолчанию) | Standard | 1,048,576 |
+| `gemini-1.5-pro` | **Gemini 1.5 Pro** — стабильный тяжелый контекст | High Context | 1,048,576 |
+| `gemini-1.5-flash` | **Gemini 1.5 Flash** — легкая базовая модель | Fast | 1,048,576 |
+| `claude-3-7-sonnet` | Алиас под Claude Code, маршрутизируется в `gemini-advanced` | Thinking | 1,048,576 |
+| `claude-3-5-sonnet` | Алиас под Claude Code, маршрутизируется в `gemini-advanced` | Thinking | 1,048,576 |
+| `claude-3-5-haiku` | Алиас под Claude Code, маршрутизируется в `gemini-hydrogen` | Fast | 1,048,576 |
+| `claude-3-opus` | Алиас под Claude Code, маршрутизируется в `gemini-advanced` | Deep Reasoning | 1,048,576 |
 
-### 1. Клонирование репозитория
+---
+
+## 🚀 Быстрый старт
+
+### 1. Клонирование
 ```bash
 git clone https://github.com/your-username/FreeGeminiAPI.git
 cd FreeGeminiAPI
 ```
 
 ### 2. Авторизация в Google (в один клик)
-Запустите интерактивный сборщик сессии:
+Запустите сборщик сессии:
 ```bash
 npm run auth
 ```
-1. Скрипт запустит изолированное окно Chromium и откроет `https://gemini.google.com/app`.
-2. Войдите в свой Google-аккаунт.
-3. Скрипт **автоматически перехватит** сессионные куки (`__Secure-1PSID`, `__Secure-1PSIDTS`, `__Secure-1PSIDCC`) и токен `SNlM0e`, после чего сохранит их в `gemini-auth.json` и завершит работу.
+1. Откроется изолированное окно Chromium со страницей входа Google.
+2. Авторизуйтесь под своим аккаунтом.
+3. Скрипт перехватит куки (`__Secure-1PSID`, `__Secure-1PSIDTS`, `__Secure-1PSIDCC`) и токен `SNlM0e`, сохранит их в `gemini-auth.json` и закроет браузер.
 
-> 💡 **Ручной способ:** скопируйте `auth.example.json` в `gemini-auth.json` и вставьте значения кук из DevTools браузера вручную.
+> 💡 **Ручная настройка:** можно вручную скопировать `auth.example.json` в `gemini-auth.json` и заполнить значения из DevTools вкладки `Application -> Cookies` на сайте Gemini.
 
 ### 3. Запуск сервера
 ```bash
 npm start
 ```
-Сервер запустится на:
-```
-http://127.0.0.1:9656/v1
-```
+Сервер готов к работе: `http://127.0.0.1:9656/v1`
 
-### 4. Проверка здоровья (Doctor)
+### 4. Проверка здоровья
 ```bash
 npm run doctor
 ```
-Скрипт проверит валидность кук, связь с Google и статус локального сервера.
 
 ---
 
-## 🛠️ Как это работает (Архитектура)
+## 🕹️ CLI-утилита `freegemini`
 
+Для удобного запуска в системе установите скрипт-обертку:
+```bash
+./scripts/freegemini.sh install
 ```
-┌────────────────────────────────────────────────────────┐
-│  Клиенты (Codex CLI / Open WebUI / Claude Code / cURL) │
-└───────────────────────────┬────────────────────────────┘
-                            │ HTTP POST (OpenAI / Responses / Messages)
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│               FreeGeminiAPI Server (:9656)             │
-│  - Zero-dependency Node.js HTTP Service                │
-│  - Protocol Normalizer & Prompt Formatter              │
-│  - Stream Parser & SSE Generator                       │
-│  - Session & Context Continuity Manager                │
-└───────────────────────────┬────────────────────────────┘
-                            │ Batchexecute RPC (StreamGenerate)
-                            │ Cookie: __Secure-1PSID; at: SNlM0e
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│             Google Gemini Web Backend (GFE)            │
-│  https://gemini.google.com/_/BardChatUi/data/...       │
-└────────────────────────────────────────────────────────┘
-```
-
-1. **CDP Cookie Extraction**: утилита `scripts/gemini_chrome_auth.js` подключается к Chrome через Chrome DevTools Protocol (CDP) по WebSocket и выгружает `Network.getCookies` и DOM-токен `window.WIZ_global_data.SNlM0e`.
-2. **Batchexecute RPC**: веб-интерфейс Gemini работает по внутреннему протоколу Google RPC (`assistant.lamda.BardFrontendService/StreamGenerate`). Прокси упаковывает сообщение в JSPB-массив размером 81 элемент (`f.req`) и подписывает токеном `at`.
-3. **Line-based Frame Parser**: ответы Google приходят чанками вида `[["wrb.fr", null, "...JSON..."]]`. Сервер налету декодирует текст кандидата (`candidate[1][0]`), цепочку рассуждений (`candidate[37][0][0]`) и идентификаторы сессии (`cid`, `rid`).
-4. **Контекст диалога**: прокси сохраняет тройку `[cid, rid, rcid]` для каждого пользователя, обеспечивая непрерывность multi-turn диалогов.
+После этого доступны команды из любой папки:
+- `freegemini` — запуск на переднем плане с выводом логов
+- `freegemini bg` — запуск в фоне (не закроется вместе с окном терминала)
+- `freegemini status` — проверка состояния и список доступных моделей
+- `freegemini logs` — чтение фоновых логов в реальном времени (`tail -f`)
+- `freegemini stop` — корректная остановка фонового процесса
 
 ---
 
-## 🧩 Подключение к клиентам
+## 🔌 Интеграция с клиентами
 
 ### 1. OpenAI Codex CLI (`codex`)
-Codex CLI использует протокол `wire_api = "responses"`. Добавьте провайдера в `~/.codex/config.toml`:
 
+Codex CLI использует нативный протокол Responses API.
+
+#### Быстрая настройка в одну команду:
+```bash
+npm run setup:codex
+```
+Команда автоматически:
+1. Создаст правильный манифест моделей в `~/.codex/models.json` и кеше `~/.codex/models_cache.json` с 1M контекстом и reasoning-уровнями.
+2. Пропишет провайдера `gemini` и `model_catalog_json` в `~/.codex/config.toml`.
+3. Сбросит старый демон `app-server`.
+
+#### Ручная настройка (`~/.codex/config.toml`):
 ```toml
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
 
 model_provider = "gemini"
 model = "gemini-advanced"
+model_catalog_json = "/home/USERNAME/.codex/models.json"
 
 [model_providers.gemini]
 name = "gemini"
@@ -119,21 +129,35 @@ wire_api = "responses"
 supports_websockets = false
 ```
 
-Проверка:
+Проверка работы:
 ```bash
-codex exec --skip-git-repo-check "Скажи одним словом: работает?"
+codex exec --skip-git-repo-check "Ответь одним словом: работает?"
 ```
+В интерактивном TUI команда `/model` покажет полный список моделей Google и Claude.
 
 ---
 
-### 2. Open WebUI
-В настройках Open WebUI (**Settings -> Connections -> OpenAI API**):
-- **URL:** `http://127.0.0.1:9656/v1`
-- **Key:** `dummy` (или любой ключ)
+### 2. Claude Code CLI (`claude`)
+
+FreeGeminiAPI нативно реализует протокол Anthropic Messages API (`/v1/messages`) со стримингом и поддержкой ролей.
+
+```bash
+export ANTHROPIC_BASE_URL="http://127.0.0.1:9656"
+export ANTHROPIC_API_KEY="not-needed"
+claude
+```
+Запросы на `claude-3-7-sonnet` автоматически будут перенаправлены на `gemini-advanced` с цепочками рассуждений.
 
 ---
 
-### 3. Python OpenAI SDK
+### 3. Cursor & Aider & Open WebUI (OpenAI Chat API)
+
+В настройках любого OpenAI-совместимого клиента:
+- **Base URL:** `http://127.0.0.1:9656/v1`
+- **API Key:** `dummy` (или любой ключ)
+- **Model:** `gemini-advanced`, `gemini-hydrogen` или `gemini-2.0-flash-thinking`
+
+#### Пример на Python (`openai`):
 ```python
 from openai import OpenAI
 
@@ -143,86 +167,61 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model="gemini-2.0-flash",
-    messages=[{"role": "user", "content": "Привет! Назови столицу Японии."}]
+    model="gemini-hydrogen",
+    messages=[{"role": "user", "content": "Привет! Назови три закона робототехники."}]
 )
 
 print(response.choices[0].message.content)
 ```
 
----
-
-### 4. Claude Code / Cline (Anthropic Messages API)
-
-FreeGeminiAPI нативно поддерживает протокол **Anthropic Messages API** (`/v1/messages`), включая стриминг блоков (`content_block_delta`), системные инструкции `system` и маппинг моделей Claude (`claude-3-7-sonnet`, `claude-3-5-sonnet`, `claude-3-5-haiku`).
-
-#### Claude Code CLI:
-```bash
-export ANTHROPIC_BASE_URL="http://127.0.0.1:9656"
-export ANTHROPIC_API_KEY="dummy"
-claude
-```
-
-#### Python Anthropic SDK:
-```python
-import anthropic
-
-client = anthropic.Anthropic(
-    base_url="http://127.0.0.1:9656",
-    api_key="not-needed"
-)
-
-message = client.messages.create(
-    model="claude-3-7-sonnet",
-    max_tokens=1024,
-    messages=[{"role": "user", "content": "Привет! Назови столицу Испании."}]
-)
-print(message.content[0].text)
-```
-
-#### cURL (Anthropic):
-```bash
-curl -N http://127.0.0.1:9656/v1/messages \
-  -H "Content-Type: application/json" \
-  -H "anthropic-version: 2023-06-01" \
-  -d '{
-    "model": "claude-3-7-sonnet",
-    "stream": true,
-    "system": "Отвечай строго одним словом.",
-    "messages": [{"role": "user", "content": "Столица Италии?"}]
-  }'
-```
-
----
-
-### 5. Стриминг через cURL (OpenAI)
+#### Потоковый cURL:
 ```bash
 curl -N http://127.0.0.1:9656/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gemini-2.0-flash-thinking",
     "stream": true,
-    "messages": [{"role": "user", "content": "Сколько букв в слове Синхрофазотрон?"}]
+    "messages": [{"role": "user", "content": "Посчитай факториал 10 с ходом мысли."}]
   }'
 ```
 
 ---
 
-## 🧠 Поддерживаемые модели
+## 🏗️ Архитектура и протокол под капотом
 
-| Модель | Режим | Описание |
-|---|---|---|
-| `gemini-2.0-flash` | Стандартный | Высокая скорость, повседневные задачи (по умолчанию) |
-| `gemini-2.0-flash-thinking` | Reasoning | Режим пошаговых рассуждений с выводом `reasoning_content` |
-| `gemini-2.0-pro-exp` | Pro | Экспериментальная флагманская модель Google |
-| `gemini-advanced` | Advanced (Argon) | Модель для подписчиков Gemini Advanced |
-| `gemini-1.5-pro` | High Context | Модель с максимальным контекстным окном |
+```
+┌────────────────────────────────────────────────────────┐
+│  Клиенты: Codex CLI / Claude Code / Cursor / Aider     │
+└───────────────────────────┬────────────────────────────┘
+                            │
+     ┌──────────────────────┼──────────────────────┐
+     │ /v1/responses        │ /v1/messages         │ /v1/chat/completions
+     ▼                      ▼                      ▼
+┌────────────────────────────────────────────────────────┐
+│               FreeGeminiAPI Server (:9656)             │
+│  - Zero-dependency Node.js HTTP Server                 │
+│  - Prompt Normalizer & Multi-turn Session Tracker      │
+│  - Protocol Converters (OpenAI / Responses / Anthropic)│
+│  - Line-delimited Chunk & JSPB Envelope Parser         │
+└───────────────────────────┬────────────────────────────┘
+                            │ Batchexecute RPC (StreamGenerate)
+                            │ Cookie: __Secure-1PSID; at: SNlM0e
+                            ▼
+┌────────────────────────────────────────────────────────┐
+│          Google Gemini Web Frontend (GFE / Bard)       │
+│  https://gemini.google.com/_/BardChatUi/data/...       │
+└────────────────────────────────────────────────────────┘
+```
+
+1. **Batchexecute RPC**: веб-интерфейс Gemini работает по внутреннему протоколу Google RPC (`assistant.lamda.BardFrontendService/StreamGenerate`). Прокси упаковывает сообщение в JSPB-массив размером 81 элемент (`f.req`) и подписывает токеном `at`.
+2. **Stream Parser**: ответы Google приходят чанками `[["wrb.fr", null, "...JSON..."]]`. Прокси парсит поток построчно, извлекая текст ответа (`candidate[1][0]`), цепочки рассуждений (`candidate[37][0][0]`) и сессионные ID (`cid`, `rid`).
+3. **Session Continuity**: сервер автоматически поддерживает контекст многошагового диалога через связку `[cid, rid, rcid]`.
 
 ---
 
-## ⚙️ Фоновый автозапуск (systemd)
+## ⚙️ Системная служба systemd (автозапуск на Linux)
 
-Чтобы прокси всегда работал в фоне на Linux, создайте юнит `~/.config/systemd/user/free-gemini-api.service`:
+Создайте файл `~/.config/systemd/user/free-gemini-api.service`:
 
 ```ini
 [Unit]
@@ -242,7 +241,7 @@ Environment=HOST=127.0.0.1
 WantedBy=default.target
 ```
 
-Включение и старт:
+Активация:
 ```bash
 systemctl --user daemon-reload
 systemctl --user enable --now free-gemini-api
@@ -250,20 +249,26 @@ systemctl --user enable --now free-gemini-api
 
 ---
 
-## 📤 Публикация на GitHub
+## ⚠️ Решение частых проблем (Troubleshooting)
 
-1. Создайте новый пустой репозиторий на [GitHub](https://github.com/new) (например `FreeGeminiAPI`).
-2. В локальной папке проекта привяжите remote и отправьте код:
-```bash
-cd FreeGeminiAPI
-git remote add origin git@github.com:your-username/FreeGeminiAPI.git
-git branch -M main
-git push -u origin main
-```
-
-> ⚠️ **Безопасность:** файл `gemini-auth.json` и профиль `.chrome-profile-gemini/` уже добавлены в `.gitignore`. Ваши персональные куки **никогда не попадут в репозиторий**.
+- **Ошибка `401 Unauthorized: Incorrect API key provided: http://127.0.0.1...` в Codex**:
+  Вы запустили `sudo codex`. Codex был запущен из-под root, где не был настроен `model_provider`, и запрос ушел на официальный `api.openai.com`. Запускайте Codex без `sudo`.
+- **Codex зависает на спиннере при старте**:
+  Остались заблокированные сокеты в `/tmp/codex-daemon-*`. Выполните:
+  ```bash
+  killall -9 codex; rm -rf /tmp/codex-daemon-* ~/.codex/app-server-*
+  ```
+- **Ошибка `401: Invalid session cookies`**:
+  Срок действия Google-кук истек. Перезапустите `npm run auth` и войдите в аккаунт снова.
 
 ---
 
-## Лицензия
-MIT License. Создано для персонального использования и интеграций.
+## 🔒 Безопасность
+
+Файл `gemini-auth.json`, профиль браузера `.chrome-profile-gemini/` и логи добавлены в `.gitignore`. При публикации репозитория на GitHub ваши учетные данные **никогда не попадут в коммиты**.
+
+---
+
+## 📄 Лицензия
+
+MIT License.

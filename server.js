@@ -97,6 +97,8 @@ const AVAILABLE_MODELS = [
     { id: 'gemini-2.0-flash-thinking', name: 'Gemini 2.0 Flash Thinking', modelNumber: 1, thinking: true, advanced: false },
     { id: 'gemini-2.0-pro-exp', name: 'Gemini 2.0 Pro Experimental', modelNumber: 1, thinking: true, advanced: true },
     { id: 'gemini-advanced', name: 'Gemini Advanced (Argon)', modelNumber: 1, thinking: true, advanced: true },
+    { id: 'gemini-hydrogen', name: 'Gemini Hydrogen', modelNumber: 1, thinking: false, advanced: false },
+    { id: 'hydrogen', name: 'Gemini Hydrogen', modelNumber: 1, thinking: false, advanced: false },
     { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', modelNumber: 1, thinking: false, advanced: true },
     { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', modelNumber: 1, thinking: false, advanced: false },
     // Claude aliases for seamless drop-in compatibility with Claude Code & Cline
@@ -127,6 +129,9 @@ function resolveModelConfig(modelName) {
     }
     const found = AVAILABLE_MODELS.find(m => m.id === clean || m.name.toLowerCase() === clean);
     if (found) return found;
+    if (clean.includes('hydrogen')) {
+        return { id: modelName, modelNumber: 1, thinking: false, advanced: false };
+    }
     if (clean.includes('thinking')) {
         return { id: modelName, modelNumber: 1, thinking: true, advanced: false };
     }
