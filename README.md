@@ -152,7 +152,50 @@ print(response.choices[0].message.content)
 
 ---
 
-### 4. Стриминг через cURL
+### 4. Claude Code / Cline (Anthropic Messages API)
+
+FreeGeminiAPI нативно поддерживает протокол **Anthropic Messages API** (`/v1/messages`), включая стриминг блоков (`content_block_delta`), системные инструкции `system` и маппинг моделей Claude (`claude-3-7-sonnet`, `claude-3-5-sonnet`, `claude-3-5-haiku`).
+
+#### Claude Code CLI:
+```bash
+export ANTHROPIC_BASE_URL="http://127.0.0.1:9656"
+export ANTHROPIC_API_KEY="dummy"
+claude
+```
+
+#### Python Anthropic SDK:
+```python
+import anthropic
+
+client = anthropic.Anthropic(
+    base_url="http://127.0.0.1:9656",
+    api_key="not-needed"
+)
+
+message = client.messages.create(
+    model="claude-3-7-sonnet",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Привет! Назови столицу Испании."}]
+)
+print(message.content[0].text)
+```
+
+#### cURL (Anthropic):
+```bash
+curl -N http://127.0.0.1:9656/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "anthropic-version: 2023-06-01" \
+  -d '{
+    "model": "claude-3-7-sonnet",
+    "stream": true,
+    "system": "Отвечай строго одним словом.",
+    "messages": [{"role": "user", "content": "Столица Италии?"}]
+  }'
+```
+
+---
+
+### 5. Стриминг через cURL (OpenAI)
 ```bash
 curl -N http://127.0.0.1:9656/v1/chat/completions \
   -H "Content-Type: application/json" \

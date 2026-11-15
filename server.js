@@ -95,21 +95,43 @@ async function refreshTokensIfNeeded() {
 const AVAILABLE_MODELS = [
     { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', modelNumber: 1, thinking: false, advanced: false },
     { id: 'gemini-2.0-flash-thinking', name: 'Gemini 2.0 Flash Thinking', modelNumber: 1, thinking: true, advanced: false },
-    { id: 'gemini-2.0-pro-exp', name: 'Gemini 2.0 Pro Experimental', modelNumber: 3, thinking: true, advanced: true },
-    { id: 'gemini-advanced', name: 'Gemini Advanced (Argon)', modelNumber: 3, thinking: true, advanced: true },
-    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', modelNumber: 3, thinking: false, advanced: true },
-    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', modelNumber: 1, thinking: false, advanced: false }
+    { id: 'gemini-2.0-pro-exp', name: 'Gemini 2.0 Pro Experimental', modelNumber: 1, thinking: true, advanced: true },
+    { id: 'gemini-advanced', name: 'Gemini Advanced (Argon)', modelNumber: 1, thinking: true, advanced: true },
+    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', modelNumber: 1, thinking: false, advanced: true },
+    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', modelNumber: 1, thinking: false, advanced: false },
+    // Claude aliases for seamless drop-in compatibility with Claude Code & Cline
+    { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet', modelNumber: 1, thinking: true, advanced: true },
+    { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet', modelNumber: 1, thinking: true, advanced: true },
+    { id: 'claude-3-5-haiku', name: 'Claude 3.5 Haiku', modelNumber: 1, thinking: false, advanced: false },
+    { id: 'claude-3-opus', name: 'Claude 3 Opus', modelNumber: 1, thinking: true, advanced: true }
 ];
 
+const CLAUDE_ALIASES = {
+    'claude-3-7-sonnet': 'gemini-advanced',
+    'claude-3-7-sonnet-20250219': 'gemini-advanced',
+    'claude-3-5-sonnet': 'gemini-advanced',
+    'claude-3-5-sonnet-20241022': 'gemini-advanced',
+    'claude-3-5-sonnet-20240620': 'gemini-advanced',
+    'claude-3-opus': 'gemini-advanced',
+    'claude-3-opus-20240229': 'gemini-advanced',
+    'claude-3-5-haiku': 'gemini-2.0-flash',
+    'claude-3-5-haiku-20241022': 'gemini-2.0-flash',
+    'claude-3-haiku': 'gemini-2.0-flash',
+    'claude-3-haiku-20240307': 'gemini-2.0-flash'
+};
+
 function resolveModelConfig(modelName) {
-    const clean = String(modelName || '').toLowerCase().trim();
+    let clean = String(modelName || '').toLowerCase().trim();
+    if (CLAUDE_ALIASES[clean]) {
+        clean = CLAUDE_ALIASES[clean];
+    }
     const found = AVAILABLE_MODELS.find(m => m.id === clean || m.name.toLowerCase() === clean);
     if (found) return found;
     if (clean.includes('thinking')) {
         return { id: modelName, modelNumber: 1, thinking: true, advanced: false };
     }
-    if (clean.includes('pro') || clean.includes('advanced') || clean.includes('argon')) {
-        return { id: modelName, modelNumber: 3, thinking: true, advanced: true };
+    if (clean.includes('pro') || clean.includes('advanced') || clean.includes('argon') || clean.includes('sonnet') || clean.includes('opus')) {
+        return { id: modelName, modelNumber: 1, thinking: true, advanced: true };
     }
     return { id: modelName || DEFAULT_MODEL, modelNumber: 1, thinking: false, advanced: false };
 }
@@ -235,6 +257,40 @@ function normalizeResponsesInput(input) {
     return messages;
 }
 
+function normalizeAnthropicInput(body) {
+    const messages = [];
+    if (body.system) {
+        let systemStr = '';
+        if (typeof body.system === 'string') {
+            systemStr = body.system;
+        } else if (Array.isArray(body.system)) {
+            systemStr = body.system.map(s => (typeof s === 'string' ? s : s?.text || '')).join('\n');
+        }
+        if (systemStr.trim()) {
+            messages.push({ role: 'system', content: systemStr.trim() });
+        }
+    }
+
+    for (const m of body.messages || []) {
+        let textContent = '';
+        if (typeof m.content === 'string') {
+            textContent = m.content;
+        } else if (Array.isArray(m.content)) {
+            for (const part of m.content) {
+                if (typeof part === 'string') {
+                    textContent += part + '\n';
+                } else if (part?.type === 'text') {
+                    textContent += (part.text || '') + '\n';
+                } else if (part?.type === 'tool_result') {
+                    textContent += `[Tool Result ${part.tool_use_id}]:\n${part.content || ''}\n`;
+                }
+            }
+        }
+        messages.push({ role: m.role || 'user', content: textContent.trim() });
+    }
+    return messages;
+}
+
 function formatMessagesToPrompt(messages) {
     if (!Array.isArray(messages) || messages.length === 0) return '';
     if (messages.length === 1) return messages[0].content || '';
@@ -311,9 +367,12 @@ const server = http.createServer(async (req, res) => {
         });
     }
 
-    // POST /v1/chat/completions, /v1/messages, /v1/responses
-    if ((pathname === '/v1/chat/completions' || pathname === '/v1/messages' || pathname === '/v1/responses') && req.method === 'POST') {
-        const isResponsesApi = (pathname === '/v1/responses');
+    // POST /v1/chat/completions, /v1/messages, /v1/responses (and without /v1 prefix)
+    const isChatApi = (pathname === '/v1/chat/completions' || pathname === '/chat/completions');
+    const isAnthropicApi = (pathname === '/v1/messages' || pathname === '/messages');
+    const isResponsesApi = (pathname === '/v1/responses' || pathname === '/responses');
+
+    if ((isChatApi || isAnthropicApi || isResponsesApi) && req.method === 'POST') {
         let bodyRaw = '';
         req.on('data', chunk => { bodyRaw += chunk; });
         req.on('end', async () => {
@@ -333,6 +392,8 @@ const server = http.createServer(async (req, res) => {
                 if (body.instructions) {
                     messages.unshift({ role: 'system', content: body.instructions });
                 }
+            } else if (isAnthropicApi) {
+                messages = normalizeAnthropicInput(body);
             } else {
                 messages = body.messages || [];
             }
@@ -438,6 +499,26 @@ const server = http.createServer(async (req, res) => {
                                 annotations: []
                             }
                         })}\n\n`);
+                    } else if (isAnthropicApi) {
+                        res.write(`event: message_start\ndata: ${JSON.stringify({
+                            type: 'message_start',
+                            message: {
+                                id: msgId,
+                                type: 'message',
+                                role: 'assistant',
+                                content: [],
+                                model: modelConfig.id,
+                                stop_reason: null,
+                                stop_sequence: null,
+                                usage: { input_tokens: Math.ceil(prompt.length / 4), output_tokens: 1 }
+                            }
+                        })}\n\n`);
+
+                        res.write(`event: content_block_start\ndata: ${JSON.stringify({
+                            type: 'content_block_start',
+                            index: 0,
+                            content_block: { type: 'text', text: '' }
+                        })}\n\n`);
                     }
                 }
 
@@ -479,6 +560,12 @@ const server = http.createServer(async (req, res) => {
                                         output_index: 0,
                                         content_index: 0,
                                         delta: delta
+                                    })}\n\n`);
+                                } else if (isAnthropicApi) {
+                                    res.write(`event: content_block_delta\ndata: ${JSON.stringify({
+                                        type: 'content_block_delta',
+                                        index: 0,
+                                        delta: { type: 'text_delta', text: delta }
                                     })}\n\n`);
                                 } else {
                                     res.write(`data: ${JSON.stringify({
@@ -601,6 +688,21 @@ const server = http.createServer(async (req, res) => {
                                 }
                             }
                         })}\n\n`);
+                    } else if (isAnthropicApi) {
+                        res.write(`event: content_block_stop\ndata: ${JSON.stringify({
+                            type: 'content_block_stop',
+                            index: 0
+                        })}\n\n`);
+
+                        res.write(`event: message_delta\ndata: ${JSON.stringify({
+                            type: 'message_delta',
+                            delta: { stop_reason: 'end_turn', stop_sequence: null },
+                            usage: { output_tokens: Math.ceil(lastFullText.length / 4) }
+                        })}\n\n`);
+
+                        res.write(`event: message_stop\ndata: ${JSON.stringify({
+                            type: 'message_stop'
+                        })}\n\n`);
                     } else {
                         res.write(`data: ${JSON.stringify({
                             id: completionId,
@@ -638,6 +740,20 @@ const server = http.createServer(async (req, res) => {
                                 input_tokens: Math.ceil(prompt.length / 4),
                                 output_tokens: Math.ceil(lastFullText.length / 4),
                                 total_tokens: Math.ceil((prompt.length + lastFullText.length) / 4)
+                            }
+                        });
+                    } else if (isAnthropicApi) {
+                        return sendJson(res, 200, {
+                            id: msgId,
+                            type: 'message',
+                            role: 'assistant',
+                            model: modelConfig.id,
+                            content: [{ type: 'text', text: lastFullText }],
+                            stop_reason: 'end_turn',
+                            stop_sequence: null,
+                            usage: {
+                                input_tokens: Math.ceil(prompt.length / 4),
+                                output_tokens: Math.ceil(lastFullText.length / 4)
                             }
                         });
                     } else {
