@@ -93,12 +93,12 @@ async function refreshTokensIfNeeded() {
 
 // Model identifiers and capability mapping
 const AVAILABLE_MODELS = [
-    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', modelNumber: 1, thinking: false },
-    { id: 'gemini-2.0-flash-thinking', name: 'Gemini 2.0 Flash Thinking', modelNumber: 1, thinking: true },
-    { id: 'gemini-2.0-pro-exp', name: 'Gemini 2.0 Pro Experimental', modelNumber: 1, thinking: true },
-    { id: 'gemini-advanced', name: 'Gemini Advanced (Argon)', modelNumber: 1, thinking: true },
-    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', modelNumber: 1, thinking: false },
-    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', modelNumber: 1, thinking: false }
+    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', modelNumber: 1, thinking: false, advanced: false },
+    { id: 'gemini-2.0-flash-thinking', name: 'Gemini 2.0 Flash Thinking', modelNumber: 1, thinking: true, advanced: false },
+    { id: 'gemini-2.0-pro-exp', name: 'Gemini 2.0 Pro Experimental', modelNumber: 3, thinking: true, advanced: true },
+    { id: 'gemini-advanced', name: 'Gemini Advanced (Argon)', modelNumber: 3, thinking: true, advanced: true },
+    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', modelNumber: 3, thinking: false, advanced: true },
+    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', modelNumber: 1, thinking: false, advanced: false }
 ];
 
 function resolveModelConfig(modelName) {
@@ -106,15 +106,15 @@ function resolveModelConfig(modelName) {
     const found = AVAILABLE_MODELS.find(m => m.id === clean || m.name.toLowerCase() === clean);
     if (found) return found;
     if (clean.includes('thinking')) {
-        return { id: modelName, modelNumber: 1, thinking: true };
+        return { id: modelName, modelNumber: 1, thinking: true, advanced: false };
     }
     if (clean.includes('pro') || clean.includes('advanced') || clean.includes('argon')) {
-        return { id: modelName, modelNumber: 1, thinking: true };
+        return { id: modelName, modelNumber: 3, thinking: true, advanced: true };
     }
-    return { id: modelName || DEFAULT_MODEL, modelNumber: 1, thinking: false };
+    return { id: modelName || DEFAULT_MODEL, modelNumber: 1, thinking: false, advanced: false };
 }
 
-function buildInnerRequest(prompt, lang = 'ru', session = null, thinking = false) {
+function buildInnerRequest(prompt, lang = 'ru', session = null, thinking = false, modelNumber = 1) {
     const inner = new Array(81).fill(null);
     inner[0] = [prompt, 0, null, null, null, null, 0];
     inner[1] = [lang];
@@ -132,7 +132,7 @@ function buildInnerRequest(prompt, lang = 'ru', session = null, thinking = false
     inner[59] = crypto.randomUUID().toUpperCase();
     inner[61] = [];
     inner[68] = 1;
-    inner[79] = 1; // Model number
+    inner[79] = modelNumber; // 1 = Flash, 3 = Pro / Advanced
     inner[80] = thinking ? 2 : 1; // Extended thinking flag
     return inner;
 }
@@ -328,22 +328,31 @@ const server = http.createServer(async (req, res) => {
             const reqId = Math.floor(Math.random() * 90000) + 10000;
             const targetEndpoint = `https://gemini.google.com/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate?bl=${encodeURIComponent(authConfig.bl)}&_reqid=${reqId}&rt=c`;
 
-            const innerReq = buildInnerRequest(prompt, 'ru', session, modelConfig.thinking);
+            const innerReq = buildInnerRequest(prompt, 'ru', session, modelConfig.thinking, modelConfig.modelNumber);
             const postData = new URLSearchParams();
             postData.append('f.req', JSON.stringify([null, JSON.stringify(innerReq)]));
             postData.append('at', authConfig.snlm0e);
 
+            const requestHeaders = {
+                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+                'Cookie': authConfig.cookies,
+                'Origin': 'https://gemini.google.com',
+                'Referer': 'https://gemini.google.com/app',
+                'X-Same-Domain': '1',
+                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+            };
+
+            if (modelConfig.advanced) {
+                // Header unlocking Advanced/Pro tier on Google backend for subscribed accounts
+                requestHeaders['x-goog-ext-525005358-jspb'] = '[1,null,null,null,"e6fa609c3fa255c0",null,null,0,[4,5,6,8],null,null,2,null,null,3]';
+                requestHeaders['x-goog-ext-73010989-jspb'] = '[0]';
+                requestHeaders['x-goog-ext-73010990-jspb'] = '[0,0,0]';
+            }
+
             try {
                 const upstreamResp = await fetch(targetEndpoint, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-                        'Cookie': authConfig.cookies,
-                        'Origin': 'https://gemini.google.com',
-                        'Referer': 'https://gemini.google.com/app',
-                        'X-Same-Domain': '1',
-                        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
-                    },
+                    headers: requestHeaders,
                     body: postData.toString()
                 });
 
