@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "auth": "node scripts/gemini_chrome_auth.js",
+    "auth": "node scripts/gemini_auth.js",
     "doctor": "node scripts/doctor.js",
     "setup:codex": "node scripts/setup_codex.js"
   },

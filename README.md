@@ -60,13 +60,21 @@ cd FreeGeminiAPI
 ```
 
 ### 2. Авторизация в Google (в один клик)
-Запустите сборщик сессии:
+При первом запуске сервера (`npm start` или `freegemini`) скрипт **автоматически** откроет установленный в системе браузер (**Firefox**, **Chrome**, **Chromium**, **Brave**).
+
+Либо вы можете запустить авторизацию вручную:
 ```bash
 npm run auth
 ```
-1. Откроется изолированное окно Chromium со страницей входа Google.
-2. Авторизуйтесь под своим аккаунтом.
-3. Скрипт перехватит куки (`__Secure-1PSID`, `__Secure-1PSIDTS`, `__Secure-1PSIDCC`) и токен `SNlM0e`, сохранит их в `gemini-auth.json` и закроет браузер.
+1. Откроется окно браузера со страницей входа в Google (`https://gemini.google.com/app`).
+2. Войдите в свой Google-аккаунт.
+3. Скрипт **автоматически перехватит** сессионные куки (`__Secure-1PSID`, `__Secure-1PSIDTS`, `__Secure-1PSIDCC`) и токен `SNlM0e`, сохранит их в `gemini-auth.json`, закроет браузер и сразу начнет отдавать API.
+
+*Для принудительного выбора браузера:*
+```bash
+BROWSER=firefox npm run auth     # использовать Firefox
+BROWSER=chromium npm run auth    # использовать Chromium/Chrome
+```
 
 > 💡 **Ручная настройка:** можно вручную скопировать `auth.example.json` в `gemini-auth.json` и заполнить значения из DevTools вкладки `Application -> Cookies` на сайте Gemini.
 

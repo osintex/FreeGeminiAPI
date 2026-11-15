@@ -1,5 +1,6 @@
 node_modules/
 .chrome-profile-gemini/
+.firefox-profile-gemini/
 gemini-auth.json
 .env
 *.log

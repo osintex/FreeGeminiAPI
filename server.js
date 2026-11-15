@@ -799,13 +799,31 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 404, { error: { message: `Not found: ${pathname}` } });
 });
 
-loadAuth();
+const { runUniversalAuth } = require('./scripts/gemini_auth');
 
-server.listen(PORT, HOST, () => {
-    console.log(`\n==================================================`);
-    console.log(`[c4] FreeGeminiAPI server listening on http://${HOST}:${PORT}`);
-    console.log(`[+] Base URL: http://${HOST}:${PORT}/v1`);
-    console.log(`[+] Default model: ${DEFAULT_MODEL}`);
-    console.log(`[+] Auth status: ${authConfig.cookies ? 'CONFIGURED' : 'NOT CONFIGURED (run npm run auth)'}`);
-    console.log(`==================================================\n`);
-});
+async function init() {
+    loadAuth();
+    if (!authConfig.cookies) {
+        if (!fs.existsSync(AUTH_FILE)) {
+            console.log('[!] gemini-auth.json не найден. Запуск первого окна авторизации в браузере...');
+            try {
+                await runUniversalAuth();
+                loadAuth();
+            } catch (err) {
+                console.error('[-] Авто-авторизация не удалась:', err.message);
+                console.log('[*] Вы можете запустить авторизацию вручную: npm run auth');
+            }
+        }
+    }
+
+    server.listen(PORT, HOST, () => {
+        console.log(`\n==================================================`);
+        console.log(`[c4] FreeGeminiAPI server listening on http://${HOST}:${PORT}`);
+        console.log(`[+] Base URL: http://${HOST}:${PORT}/v1`);
+        console.log(`[+] Default model: ${DEFAULT_MODEL}`);
+        console.log(`[+] Auth status: ${authConfig.cookies ? 'CONFIGURED' : 'NOT CONFIGURED (run npm run auth)'}`);
+        console.log(`==================================================\n`);
+    });
+}
+
+init();
