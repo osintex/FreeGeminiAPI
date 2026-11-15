@@ -8,6 +8,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/osintex/FreeGeminiAPI/releases"><img alt="Latest Release" src="https://img.shields.io/github/v/release/osintex/FreeGeminiAPI?color=7c3aed" /></a>
   <img alt="Node.js 18 plus" src="https://img.shields.io/badge/node-18%2B-339933.svg" />
   <img alt="Zero Dependencies" src="https://img.shields.io/badge/dependencies-0-blue.svg" />
   <img alt="OpenAI Chat API" src="https://img.shields.io/badge/OpenAI_Chat-compatible-111111.svg" />
@@ -56,7 +57,7 @@
 
 ### 1. Клонирование
 ```bash
-git clone https://github.com/your-username/FreeGeminiAPI.git
+git clone https://github.com/osintex/FreeGeminiAPI.git
 cd FreeGeminiAPI
 ```
 
