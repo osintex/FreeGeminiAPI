@@ -165,62 +165,82 @@ async function main() {
     console.log(`[+] Waiting for DevTools on port ${port}...`);
     await waitDevtools();
 
-    console.log('[+] Chrome opened. Please log into your Google Account in the opened window.');
-    console.log('[+] After signing in and reaching https://gemini.google.com/app:');
-    await ask('Press [Enter] here in terminal when you are fully logged in...');
+    console.log('[+] Browser opened on screen. Please log into your Google Account.');
+    console.log('[+] Waiting for login (auto-detecting session or press Enter when done)...');
 
-    const page = await getPageTarget();
-    console.log(`[+] Connected to page: ${page.url}`);
+    let cdp = null;
+    let secure1psid = '';
+    let secure1psidts = '';
+    let secure1psidcc = '';
+    let cookieHeader = '';
+    let snlm0e = '';
+    let bl = 'boq_gemini-web-uiserver_20261113.11_p0';
+    let fsid = '';
 
-    const cdp = new CDP(page.webSocketDebuggerUrl);
-    await cdp.ready();
+    const maxWaitMs = 5 * 60 * 1000;
+    const startTime = Date.now();
 
-    // 1. Extract cookies
-    const cookieRes = await cdp.send('Network.getCookies', {
-        urls: ['https://gemini.google.com', 'https://google.com', 'https://accounts.google.com']
-    });
+    while (Date.now() - startTime < maxWaitMs) {
+        try {
+            const page = await getPageTarget();
+            if (!cdp) {
+                cdp = new CDP(page.webSocketDebuggerUrl);
+                await cdp.ready();
+            }
 
-    const cookies = cookieRes.cookies || [];
-    const cookieMap = {};
-    const cookiePairs = [];
+            const cookieRes = await cdp.send('Network.getCookies', {
+                urls: ['https://gemini.google.com', 'https://google.com', 'https://accounts.google.com']
+            });
 
-    for (const c of cookies) {
-        cookieMap[c.name] = c.value;
-        cookiePairs.push(`${c.name}=${c.value}`);
+            const cookies = cookieRes.cookies || [];
+            const cookiePairs = cookies.map(c => `${c.name}=${c.value}`);
+            const psidCookie = cookies.find(c => c.name === '__Secure-1PSID');
+            const tsCookie = cookies.find(c => c.name === '__Secure-1PSIDTS');
+            const ccCookie = cookies.find(c => c.name === '__Secure-1PSIDCC');
+
+            if (psidCookie && psidCookie.value) {
+                secure1psid = psidCookie.value;
+                secure1psidts = tsCookie?.value || '';
+                secure1psidcc = ccCookie?.value || '';
+                cookieHeader = cookiePairs.join('; ');
+
+                // Try evaluate tokens
+                const evalRes = await cdp.send('Runtime.evaluate', {
+                    expression: `(() => {
+                        const wiz = window.WIZ_global_data || {};
+                        const html = document.documentElement ? document.documentElement.innerHTML : "";
+                        const snlMatch = html.match(/"SNlM0e":\\s*"([^"]+)"/);
+                        const cfbMatch = html.match(/"cfb2h":\\s*"([^"]+)"/);
+                        const fsidMatch = html.match(/"FdrFJe":\\s*"([^"]+)"/);
+                        return {
+                            snlm0e: wiz.SNlM0e || (snlMatch ? snlMatch[1] : ""),
+                            bl: wiz.cfb2h || (cfbMatch ? cfbMatch[1] : ""),
+                            fsid: wiz.FdrFJe || (fsidMatch ? fsidMatch[1] : "")
+                        };
+                    })()`,
+                    returnByValue: true
+                });
+
+                const pageTokens = evalRes.result?.value || {};
+                snlm0e = pageTokens.snlm0e || '';
+                if (pageTokens.bl) bl = pageTokens.bl;
+                if (pageTokens.fsid) fsid = pageTokens.fsid;
+
+                console.log('\n[+] Login detected! Captured __Secure-1PSID session.');
+                break;
+            }
+        } catch (e) {
+            // DevTools might reconnect or page reloaded
+            cdp = null;
+        }
+        await sleep(2000);
     }
-
-    const cookieHeader = cookiePairs.join('; ');
-    const secure1psid = cookieMap['__Secure-1PSID'] || '';
-    const secure1psidts = cookieMap['__Secure-1PSIDTS'] || '';
-    const secure1psidcc = cookieMap['__Secure-1PSIDCC'] || '';
 
     if (!secure1psid) {
-        console.warn('[-] Warning: __Secure-1PSID cookie not found. Are you logged in?');
-    } else {
-        console.log('[+] Found __Secure-1PSID session cookie.');
+        console.error('[-] Timeout waiting for login. __Secure-1PSID cookie not found.');
+        if (cdp) cdp.close();
+        process.exit(1);
     }
-
-    // 2. Extract SNlM0e and build label from page context
-    const evalRes = await cdp.send('Runtime.evaluate', {
-        expression: `(() => {
-            const wiz = window.WIZ_global_data || {};
-            const html = document.documentElement ? document.documentElement.innerHTML : "";
-            const snlMatch = html.match(/"SNlM0e":\\s*"([^"]+)"/);
-            const cfbMatch = html.match(/"cfb2h":\\s*"([^"]+)"/);
-            const fsidMatch = html.match(/"FdrFJe":\\s*"([^"]+)"/);
-            return {
-                snlm0e: wiz.SNlM0e || (snlMatch ? snlMatch[1] : ""),
-                bl: wiz.cfb2h || (cfbMatch ? cfbMatch[1] : ""),
-                fsid: wiz.FdrFJe || (fsidMatch ? fsidMatch[1] : "")
-            };
-        })()`,
-        returnByValue: true
-    });
-
-    const pageTokens = evalRes.result?.value || {};
-    let snlm0e = pageTokens.snlm0e || '';
-    let bl = pageTokens.bl || 'boq_gemini-web-uiserver_20261113.11_p0';
-    let fsid = pageTokens.fsid || '';
 
     // If not extracted via page evaluation, try fetching the page HTML directly with our cookies
     if (!snlm0e && cookieHeader) {
