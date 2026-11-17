@@ -172,17 +172,19 @@ codex exec --skip-git-repo-check "Ответь одним словом: рабо
 
 FreeGeminiAPI поддерживает нативный протокол Anthropic Messages API (`/v1/messages`).
 
-В `~/.bashrc` или `~/.zshrc`:
+#### Настройка в 1 команду:
 ```bash
-export ANTHROPIC_BASE_URL="http://127.0.0.1:9656"
-export ANTHROPIC_API_KEY="not-needed"
+node scripts/setup_claude.js
 ```
+Скрипт создаст удобный лаунчер `claude-free` в `~/.local/bin/` и пропишет алиасы в `~/.bashrc` / `~/.zshrc`.
 
-Запуск:
+#### Запуск:
 ```bash
-claude
+claude-free
 ```
-Запросы на `claude-3-7-sonnet` автоматически транслируются в `gemini-advanced` с поддержкой reasoning.
+*(или `ANTHROPIC_BASE_URL="http://127.0.0.1:9656" ANTHROPIC_API_KEY="freegemini" claude`)*
+
+Все запросы на `claude-3-7-sonnet` и `claude-3-5-sonnet` автоматически транслируются в `gemini-advanced` (Argon) с поддержкой reasoning и 1M контекста. Запросы на `claude-3-5-haiku` идут через быстрый `gemini-2.0-flash`.
 
 ---
 

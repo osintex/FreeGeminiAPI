@@ -7,7 +7,8 @@
     "start": "node server.js",
     "auth": "node scripts/gemini_auth.js",
     "doctor": "node scripts/doctor.js",
-    "setup:codex": "node scripts/setup_codex.js"
+    "setup:codex": "node scripts/setup_codex.js",
+    "setup:claude": "node scripts/setup_claude.js"
   },
   "keywords": [
     "gemini",
