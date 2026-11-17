@@ -56,9 +56,24 @@ function loadAuth() {
     }
 }
 
+let lastFailedRefresh = 0;
+
 async function refreshTokensIfNeeded() {
     if (!authConfig.cookies) return false;
     if (authConfig.snlm0e) return true;
+
+    if (!authConfig.cookies.includes('__Secure-1PSID')) {
+        if (Date.now() - lastFailedRefresh > 15000) {
+            console.warn('[-] Ошибка: в gemini-auth.json отсутствуют авторизованные куки (__Secure-1PSID).');
+            console.warn('[*] Запустите: npm run auth (или freegemini)');
+            lastFailedRefresh = Date.now();
+        }
+        return false;
+    }
+
+    if (Date.now() - lastFailedRefresh < 10000) {
+        return false; // Cooldown on failed refresh
+    }
 
     console.log('[*] Refreshing SNlM0e token from gemini.google.com/app...');
     try {
@@ -83,10 +98,12 @@ async function refreshTokensIfNeeded() {
             return true;
         } else {
             console.warn('[-] Could not extract SNlM0e from Google. Check your cookies.');
+            lastFailedRefresh = Date.now();
             return false;
         }
     } catch (e) {
         console.error('[-] Error refreshing tokens:', e.message);
+        lastFailedRefresh = Date.now();
         return false;
     }
 }
